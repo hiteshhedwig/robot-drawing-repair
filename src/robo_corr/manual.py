@@ -32,6 +32,7 @@ TRAVEL_JOINT_SPEED = 0.85
 MIN_SEGMENT_DURATION = 0.12
 PEN_DOWN_SETTLE_DURATION = 0.20
 REPAIR_MIN_PROGRESS_PERCENT = 0.05
+AUTO_REPAIR_DELAY_SECONDS = 2.0
 DRAWING_HALF_X = CANVAS_HALF_SIZE[0] - 0.110
 DRAWING_HALF_Y = CANVAS_HALF_SIZE[1] - 0.080
 
@@ -403,7 +404,8 @@ def main() -> None:
     home_qpos = data.qpos.copy()
     recorder = StrokeRecorder()
     executor = ManualExecutor(model, data, recorder)
-    autonomous_active = False
+    auto_mode_enabled = False
+    auto_repair_due: float | None = None
     execution_purpose: str | None = None
     last_handled_disturbance = recorder.disturbance_version
     last_handled_completion = executor.completion_count
@@ -437,7 +439,7 @@ def main() -> None:
             return False
 
         recorder.repair_preview = [stroke.copy() for stroke in repair_strokes]
-        executor.status = "PLANNING CAMERA-BASED REPAIR"
+        executor.status = "PLANNING AUTONOMOUS REPAIR"
         print(
             f"Planning {len(repair_strokes)} shortest-first repair segment(s) "
             f"for {recorder.missing_percent:.1f}% missing ink..."
@@ -463,7 +465,7 @@ def main() -> None:
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
     cv2.setMouseCallback(WINDOW_NAME, recorder.mouse_callback)
     print(
-        "Window remains open. E = execute, A = autonomous repair, "
+        "Window remains open. E = execute, A = toggle persistent auto-repair, "
         "R/C = reset both, Q/Esc = quit."
     )
 
@@ -484,7 +486,8 @@ def main() -> None:
                 recorder.clear()
                 executor.reset()
                 viewer.user_scn.ngeom = 0
-                autonomous_active = False
+                auto_mode_enabled = False
+                auto_repair_due = None
                 execution_purpose = None
                 repair_start_percent = None
                 last_handled_disturbance = recorder.disturbance_version
@@ -494,7 +497,8 @@ def main() -> None:
                 if executor.executing:
                     print("Robot is already executing; press R/C to cancel and reset.")
                 elif strokes:
-                    autonomous_active = False
+                    auto_mode_enabled = False
+                    auto_repair_due = None
                     recorder.repair_preview.clear()
                     executor.status = "PLANNING"
                     cv2.imshow(WINDOW_NAME, recorder.display_image(executor.status))
@@ -516,12 +520,22 @@ def main() -> None:
                         execution_purpose = "manual"
                         print(f"IK succeeded for {len(path)} robot waypoints.")
             elif key == ord("a"):
-                if executor.executing:
-                    print("Wait for the current manual execution, or press R/C first.")
+                if auto_mode_enabled:
+                    auto_mode_enabled = False
+                    auto_repair_due = None
+                    executor.status = "AUTO MODE OFF"
+                    print("Persistent auto-repair mode disabled.")
+                elif executor.executing:
+                    print("Wait for the current manual execution, then press A.")
                 else:
-                    autonomous_active = True
+                    auto_mode_enabled = True
                     last_handled_completion = executor.completion_count
-                    autonomous_active = start_repair_plan()
+                    if recorder.missing_percent > 0.0:
+                        auto_repair_due = time.monotonic() + AUTO_REPAIR_DELAY_SECONDS
+                        executor.status = "AUTO MODE ON - REPAIR IN 2.0s"
+                    else:
+                        executor.status = "AUTO MODE ON - WATCHING"
+                    print("Persistent auto-repair mode enabled. Press A again to disable.")
 
             if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                 break
@@ -530,25 +544,43 @@ def main() -> None:
 
             if recorder.disturbance_version != last_handled_disturbance:
                 if (
-                    autonomous_active
+                    auto_mode_enabled
                     and executor.executing
                     and execution_purpose == "repair"
                 ):
                     executor.cancel_motion()
                     execution_purpose = None
-                    executor.status = "DISTURBANCE - REPLANNING"
+                    auto_repair_due = None
+                    executor.status = "AUTO MODE - WAITING FOR ERASER"
                 if not recorder.erasing and not executor.executing:
                     last_handled_disturbance = recorder.disturbance_version
-                    if autonomous_active:
+                    if auto_mode_enabled:
                         repair_start_percent = None
-                        autonomous_active = start_repair_plan()
+                        auto_repair_due = time.monotonic() + AUTO_REPAIR_DELAY_SECONDS
+                        executor.status = "AUTO MODE ON - REPAIR IN 2.0s"
+
+            if (
+                auto_mode_enabled
+                and auto_repair_due is not None
+                and not recorder.erasing
+                and not executor.executing
+            ):
+                remaining = auto_repair_due - time.monotonic()
+                if remaining > 0.0:
+                    executor.status = f"AUTO MODE ON - REPAIR IN {remaining:.1f}s"
+                else:
+                    auto_repair_due = None
+                    if not start_repair_plan():
+                        executor.status = "AUTO MODE ON - WATCHING"
 
             if executor.completion_count != last_handled_completion:
                 last_handled_completion = executor.completion_count
                 completed_purpose = execution_purpose
                 execution_purpose = None
-                if autonomous_active and completed_purpose == "repair":
-                    autonomous_active = start_repair_plan(check_progress=True)
+                if auto_mode_enabled and completed_purpose == "repair":
+                    if not start_repair_plan(check_progress=True):
+                        if recorder.missing_percent <= 0.0:
+                            executor.status = "AUTO MODE ON - WATCHING"
 
             executor.step(viewer)
             executor.ensure_ink_visible(viewer)

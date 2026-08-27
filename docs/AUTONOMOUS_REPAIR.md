@@ -128,7 +128,9 @@ It measures missing trajectory length rather than raw antialiased pixel area.
 
 ## Building a repair path
 
-Pressing `A` starts autonomous repair.
+Pressing `A` enables persistent autonomous repair mode. Every completed erase
+gesture starts a two-second countdown before repair begins; pressing `A` again
+disables the mode.
 
 ### 1. Extract missing trajectory runs
 

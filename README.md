@@ -76,7 +76,9 @@ Controls:
 - Hold the left mouse button on the left canvas to draw the reference.
 - Drag on the right canvas to erase part of the current robot output. Matching
   ink segments are also removed from the MuJoCo canvas view.
-- Press `A` to autonomously repair all currently detected missing regions.
+- Press `A` to enable persistent auto-repair mode. While enabled, each completed
+  erase gesture starts a two-second countdown and is then repaired automatically.
+  Press `A` again to disable the mode.
 - Release and drag again to create a disconnected stroke.
 - Press `R` or `C` to reset both canvases and return the Panda home. Reset also
   cancels an execution currently in progress.
@@ -96,7 +98,8 @@ from the display overlay for use by the repair planner.
 
 ## Autonomous repair
 
-After erasing simulated ink, press `A`. The repair planner:
+Enable auto-repair with `A`, then erase simulated ink. After the two-second
+countdown, the repair planner:
 
 1. Extracts missing runs from the original ordered mouse strokes.
 2. Adds a small overlap with intact ink for clean reconnection.

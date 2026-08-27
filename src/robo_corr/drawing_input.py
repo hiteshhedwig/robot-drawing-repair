@@ -143,7 +143,7 @@ class StrokeRecorder:
         )
         cv2.putText(
             display,
-            f"{status}   E: execute   A: auto-repair   R/C: reset   Q: quit",
+            f"{status}   E: execute   A: auto ON/OFF   R/C: reset   Q: quit",
             (12, IMAGE_HEIGHT - 16),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
