@@ -33,6 +33,12 @@ MIN_SEGMENT_DURATION = 0.12
 PEN_DOWN_SETTLE_DURATION = 0.20
 REPAIR_MIN_PROGRESS_PERCENT = 0.05
 AUTO_REPAIR_DELAY_SECONDS = 2.0
+# Approximate image-space execution rates used only to decide whether two
+# damaged runs on the same reference stroke should be joined. Lifting and
+# lowering includes the two vertical moves and their settling overhead.
+ESTIMATED_DRAW_PIXELS_PER_SECOND = 85.0
+ESTIMATED_AIR_PIXELS_PER_SECOND = 135.0
+PEN_LIFT_LOWER_OVERHEAD_SECONDS = 0.55
 DRAWING_HALF_X = CANVAS_HALF_SIZE[0] - 0.110
 DRAWING_HALF_Y = CANVAS_HALF_SIZE[1] - 0.080
 
@@ -102,6 +108,7 @@ def build_shortest_repair_strokes(
         pixels[:, 1] = np.clip(pixels[:, 1], 0, IMAGE_HEIGHT - 1)
         missing = expanded_error[pixels[:, 1], pixels[:, 0]]
 
+        raw_runs: list[tuple[int, int]] = []
         index = 0
         while index < len(points):
             if not missing[index]:
@@ -112,6 +119,35 @@ def build_shortest_repair_strokes(
                 index += 1
             run_end = index
 
+            raw_runs.append((run_start, run_end))
+            index += 1
+
+        # A short healthy bridge is cheaper to draw over than to perform a
+        # marker-up, faster air move, and marker-down cycle. Merge such runs so
+        # the repair stays on the original trajectory without needless lifts.
+        merged_runs: list[list[int]] = []
+        for run_start, run_end in raw_runs:
+            if not merged_runs:
+                merged_runs.append([run_start, run_end])
+                continue
+
+            previous_end = merged_runs[-1][1]
+            bridge = points[previous_end : run_start + 1]
+            bridge_length = float(
+                np.linalg.norm(np.diff(bridge, axis=0), axis=1).sum()
+            )
+            direct_distance = float(np.linalg.norm(points[run_start] - points[previous_end]))
+            draw_time = bridge_length / ESTIMATED_DRAW_PIXELS_PER_SECOND
+            air_time = (
+                direct_distance / ESTIMATED_AIR_PIXELS_PER_SECOND
+                + PEN_LIFT_LOWER_OVERHEAD_SECONDS
+            )
+            if draw_time <= air_time:
+                merged_runs[-1][1] = run_end
+            else:
+                merged_runs.append([run_start, run_end])
+
+        for run_start, run_end in merged_runs:
             # Twelve pixels of overlap at each end makes the physical repair
             # cross into healthy ink instead of stopping at a detected boundary.
             run_start = max(0, run_start - 3)
@@ -119,7 +155,6 @@ def build_shortest_repair_strokes(
             repair = points[run_start : run_end + 1]
             if len(repair) >= 2:
                 candidates.append(repair)
-            index += 1
 
     ordered: list[np.ndarray] = []
     current = np.asarray(start_pixel, dtype=float)

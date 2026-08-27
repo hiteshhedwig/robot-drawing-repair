@@ -147,7 +147,23 @@ at both ends. This deliberate overlap ensures the physical repair reconnects the
 existing line instead of stopping at the exact detection boundary and leaving a
 small seam.
 
-### 3. Choose a short execution order
+### 3. Decide whether to draw through healthy bridges
+
+When two missing runs belong to the same original stroke, the planner compares:
+
+```text
+draw-through time = healthy bridge length / estimated drawing speed
+
+marker-up time = lift/lower overhead
+               + direct bridge distance / estimated air-travel speed
+```
+
+If drawing through the existing black ink is faster, both damaged runs become
+one continuous pen-down repair. The marker lifts only when the estimated air
+route is faster. This avoids repeated lift, travel, and marker-down cycles around
+small healthy islands.
+
+### 4. Choose a short execution order
 
 There may be several disconnected damaged regions. The planner uses a greedy
 nearest-endpoint strategy:

@@ -103,10 +103,12 @@ countdown, the repair planner:
 
 1. Extracts missing runs from the original ordered mouse strokes.
 2. Adds a small overlap with intact ink for clean reconnection.
-3. Selects the nearest remaining repair endpoint, reversing a run when that
+3. Draws through short healthy bridges when that is faster than lifting,
+   travelling in air, and lowering the marker again.
+4. Selects the nearest remaining repair endpoint, reversing a run when that
    shortens marker-up travel.
-4. Displays the planned repair as yellow lines and square waypoint boxes.
-5. Executes only those missing stroke portions and observes the result again.
+5. Displays the planned repair as yellow lines and square waypoint boxes.
+6. Executes the planned repair and checks the result again.
 
 If the right canvas is erased during repair, the current plan is cancelled at
 the robot's present pose. Once the mouse button is released, the detector updates
