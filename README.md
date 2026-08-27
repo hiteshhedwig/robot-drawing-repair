@@ -7,11 +7,23 @@ mouse drawing, live missing-region detection, and autonomous repair/replanning.
 See [`docs/AUTONOMOUS_REPAIR.md`](docs/AUTONOMOUS_REPAIR.md) for the complete
 technical explanation of detection, repair planning, execution, and replanning.
 
+## Demo
+
+![Autonomous drawing repair in MuJoCo](docs/media/autonomous-repair-demo.gif)
+
+The Panda executes the reference strokes on the simulated canvas. Erasing part of
+the robot output raises the `MISSING / UNRECOVERED` percentage, and auto-repair
+replans and redraws only the damaged runs until the metric returns to zero.
+
 ## Current structure
 
 ```text
 robo_corr/
 ├── pyproject.toml
+├── docs/
+│   ├── AUTONOMOUS_REPAIR.md
+│   └── media/
+│       └── autonomous-repair-demo.gif
 ├── src/robo_corr/
 │   ├── scene.py       # Panda + marker + canvas model construction
 │   ├── drawing_input.py # ordered OpenCV stroke capture
