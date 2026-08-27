@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robo-corr"
+version = "0.1.0"
+description = "Closed-loop robotic drawing correction in MuJoCo"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "mujoco>=3.3,<4",
+  "numpy>=1.26,<3",
+  "opencv-python>=4.9,<5",
+]
+
+[project.optional-dependencies]
+analysis = ["scipy>=1.12,<2"]
+
+[project.scripts]
+robo-corr-inspect = "robo_corr.viewer:main"
+robo-corr-manual = "robo_corr.manual:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
