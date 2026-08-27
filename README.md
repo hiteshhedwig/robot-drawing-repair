@@ -9,7 +9,7 @@ technical explanation of detection, repair planning, execution, and replanning.
 
 ## Demo
 
-![Autonomous drawing repair in MuJoCo](docs/media/autonomous-repair-demo.gif)
+![Autonomous drawing repair in MuJoCo](docs/media/closed-loop-repair-demo.gif)
 
 The Panda executes the reference strokes on the simulated canvas. Erasing part of
 the robot output raises the `MISSING / UNRECOVERED` percentage, and auto-repair
@@ -23,7 +23,7 @@ robot-drawing-repair/
 ├── docs/
 │   ├── AUTONOMOUS_REPAIR.md
 │   └── media/
-│       └── autonomous-repair-demo.gif
+│       └── closed-loop-repair-demo.gif
 ├── src/robot_drawing_repair/
 │   ├── scene.py       # Panda + marker + canvas model construction
 │   ├── drawing_input.py # ordered OpenCV stroke capture
