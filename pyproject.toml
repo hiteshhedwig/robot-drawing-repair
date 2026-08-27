@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "robo-corr"
+name = "robot-drawing-repair"
 version = "0.1.0"
 description = "Closed-loop robotic drawing correction in MuJoCo"
 readme = "README.md"
@@ -18,8 +18,8 @@ dependencies = [
 analysis = ["scipy>=1.12,<2"]
 
 [project.scripts]
-robo-corr-inspect = "robo_corr.viewer:main"
-robo-corr-manual = "robo_corr.manual:main"
+robot-drawing-repair-inspect = "robot_drawing_repair.viewer:main"
+robot-drawing-repair-manual = "robot_drawing_repair.manual:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,7 +5,7 @@ import time
 import mujoco
 import mujoco.viewer
 
-from robo_corr.scene import build_model, make_home_data
+from robot_drawing_repair.scene import build_model, make_home_data
 
 
 def main() -> None:

@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from robo_corr.error_detection import detect_missing_regions, dotted_error_overlay
+from robot_drawing_repair.error_detection import detect_missing_regions, dotted_error_overlay
 
 
-WINDOW_NAME = "robo_corr manual input"
+WINDOW_NAME = "Robot Drawing Repair - manual input"
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 512
 ERASER_RADIUS = 16

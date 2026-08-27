@@ -1,4 +1,4 @@
-# robo_corr
+# Robot Drawing Repair
 
 An incremental MuJoCo project for closed-loop robotic drawing correction.
 The current milestone provides a mechanically inspectable Franka Panda, manual
@@ -18,13 +18,13 @@ replans and redraws only the damaged runs until the metric returns to zero.
 ## Current structure
 
 ```text
-robo_corr/
+robot-drawing-repair/
 ├── pyproject.toml
 ├── docs/
 │   ├── AUTONOMOUS_REPAIR.md
 │   └── media/
 │       └── autonomous-repair-demo.gif
-├── src/robo_corr/
+├── src/robot_drawing_repair/
 │   ├── scene.py       # Panda + marker + canvas model construction
 │   ├── drawing_input.py # ordered OpenCV stroke capture
 │   ├── image_import.py # binary line-art normalization and stroke extraction
@@ -46,8 +46,8 @@ This machine currently exposes Python 3.8 as `python3`, so create a Python 3.11
 environment explicitly. With Conda:
 
 ```bash
-conda create -n robo_corr python=3.11 -y
-conda activate robo_corr
+conda create -n robot-drawing-repair python=3.11 -y
+conda activate robot-drawing-repair
 python -m pip install --upgrade pip
 python -m pip install -e .
 ```
@@ -73,9 +73,9 @@ git -C third_party/mujoco_menagerie checkout
 ## Run manual mode
 
 ```bash
-conda activate robo_corr
-cd /home/cpu-57/robo_corr
-python -m robo_corr.manual
+conda activate robot-drawing-repair
+cd /path/to/robot-drawing-repair
+python -m robot_drawing_repair.manual
 ```
 
 The OpenCV window contains two side-by-side canvases:
@@ -103,7 +103,7 @@ Controls:
 An image can also be loaded directly from the command line:
 
 ```bash
-python -m robo_corr.manual --image /path/to/line-art.png
+python -m robot_drawing_repair.manual --image /path/to/line-art.png
 ```
 
 The importer thresholds dark ink, preserves aspect ratio, fits it within the
@@ -158,10 +158,10 @@ corners. It can be expanded later alongside collision-aware reachability tests.
 From the project root, with the environment activated:
 
 ```bash
-python -m robo_corr
+python -m robot_drawing_repair
 ```
 
-The installed equivalents are `robo-corr-manual` and `robo-corr-inspect`.
+The installed equivalents are `robot-drawing-repair-manual` and `robot-drawing-repair-inspect`.
 
 ## First visual inspection
 

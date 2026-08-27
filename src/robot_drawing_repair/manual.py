@@ -9,16 +9,16 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from robo_corr.drawing_input import (
+from robot_drawing_repair.drawing_input import (
     ERASER_RADIUS,
     IMAGE_HEIGHT,
     IMAGE_WIDTH,
     WINDOW_NAME,
     StrokeRecorder,
 )
-from robo_corr.kinematics import MarkerIK
-from robo_corr.image_import import import_line_art
-from robo_corr.scene import (
+from robot_drawing_repair.kinematics import MarkerIK
+from robot_drawing_repair.image_import import import_line_art
+from robot_drawing_repair.scene import (
     CANVAS_CENTER,
     CANVAS_HALF_SIZE,
     build_model,
@@ -65,7 +65,7 @@ def choose_image_file() -> str | None:
         return selected or None
     except Exception as error:
         print(f"Could not open the image picker: {error}")
-        print("Use: python -m robo_corr.manual --image /path/to/image.png")
+        print("Use: python -m robot_drawing_repair.manual --image /path/to/image.png")
         return None
 
 
