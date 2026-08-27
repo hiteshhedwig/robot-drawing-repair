@@ -15,6 +15,7 @@ robo_corr/
 ├── src/robo_corr/
 │   ├── scene.py       # Panda + marker + canvas model construction
 │   ├── drawing_input.py # ordered OpenCV stroke capture
+│   ├── image_import.py # binary line-art normalization and stroke extraction
 │   ├── error_detection.py # desired/current comparison and error map
 │   ├── kinematics.py  # marker-tip inverse kinematics
 │   ├── manual.py      # mouse trajectory planning and execution
@@ -74,6 +75,8 @@ The OpenCV window contains two side-by-side canvases:
 Controls:
 
 - Hold the left mouse button on the left canvas to draw the reference.
+- Press `I` to select a binary or line-art image and convert it into drawable
+  reference strokes. Importing replaces and resets the current drawing.
 - Drag on the right canvas to erase part of the current robot output. Matching
   ink segments are also removed from the MuJoCo canvas view.
 - Press `A` to enable persistent auto-repair mode. While enabled, each completed
@@ -84,6 +87,19 @@ Controls:
   cancels an execution currently in progress.
 - Press `E` to execute the captured strokes.
 - Press `Q` or Escape to cancel.
+
+An image can also be loaded directly from the command line:
+
+```bash
+python -m robo_corr.manual --image /path/to/line-art.png
+```
+
+The importer thresholds dark ink, preserves aspect ratio, fits it within the
+reachable canvas margin, thins it to centerlines, and creates one continuous
+covering walk per connected ink component. At branches the walk may retrace
+existing black ink to avoid unnecessary marker lifts. Detailed artwork can
+still require many robot waypoints and will take substantially longer to plan
+and execute than a simple handwritten shape.
 
 The OpenCV input and MuJoCo viewer remain open while the Panda executes and
 updates the right canvas in real time.

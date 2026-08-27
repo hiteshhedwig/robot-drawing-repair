@@ -1,6 +1,8 @@
-"""Manual mouse-to-Panda trajectory demonstration."""
+"""Manual or imported-image-to-Panda trajectory demonstration."""
 
+import argparse
 import time
+from pathlib import Path
 
 import cv2
 import mujoco
@@ -15,6 +17,7 @@ from robo_corr.drawing_input import (
     StrokeRecorder,
 )
 from robo_corr.kinematics import MarkerIK
+from robo_corr.image_import import import_line_art
 from robo_corr.scene import (
     CANVAS_CENTER,
     CANVAS_HALF_SIZE,
@@ -41,6 +44,29 @@ ESTIMATED_AIR_PIXELS_PER_SECOND = 135.0
 PEN_LIFT_LOWER_OVERHEAD_SECONDS = 0.55
 DRAWING_HALF_X = CANVAS_HALF_SIZE[0] - 0.110
 DRAWING_HALF_Y = CANVAS_HALF_SIZE[1] - 0.080
+
+
+def choose_image_file() -> str | None:
+    """Open a small native file picker without adding a project dependency."""
+    try:
+        from tkinter import Tk, filedialog
+
+        root = Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selected = filedialog.askopenfilename(
+            title="Import binary line-art reference",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
+                ("All files", "*"),
+            ],
+        )
+        root.destroy()
+        return selected or None
+    except Exception as error:
+        print(f"Could not open the image picker: {error}")
+        print("Use: python -m robo_corr.manual --image /path/to/image.png")
+        return None
 
 
 def resample_stroke(stroke: np.ndarray, spacing: float = PIXEL_SPACING) -> np.ndarray:
@@ -434,6 +460,12 @@ class ManualExecutor:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--image", type=Path, help="binary/line-art image to load as the reference"
+    )
+    args = parser.parse_args()
+
     model = build_model()
     data = make_home_data(model)
     home_qpos = data.qpos.copy()
@@ -445,6 +477,40 @@ def main() -> None:
     last_handled_disturbance = recorder.disturbance_version
     last_handled_completion = executor.completion_count
     repair_start_percent: float | None = None
+
+    def load_image_reference(
+        path: str | Path, viewer: mujoco.viewer.Handle | None = None
+    ) -> bool:
+        nonlocal auto_mode_enabled, auto_repair_due, execution_purpose
+        nonlocal last_handled_disturbance, repair_start_percent
+        try:
+            strokes = import_line_art(path, IMAGE_WIDTH, IMAGE_HEIGHT)
+        except ValueError as error:
+            executor.status = "IMAGE IMPORT FAILED"
+            print(error)
+            return False
+        if not strokes:
+            executor.status = "IMAGE HAS NO DRAWABLE STROKES"
+            print("The image produced no drawable line strokes.")
+            return False
+
+        executor.reset()
+        if viewer is not None:
+            viewer.user_scn.ngeom = 0
+        recorder.set_reference_strokes(strokes)
+        auto_mode_enabled = False
+        auto_repair_due = None
+        execution_purpose = None
+        repair_start_percent = None
+        last_handled_disturbance = recorder.disturbance_version
+        executor.status = f"IMPORTED {len(strokes)} STROKES - PRESS E"
+        point_count = sum(len(stroke) for stroke in strokes)
+        print(f"Imported {path}: {len(strokes)} drawable strokes, {point_count} control points.")
+        print("Press E to plan and draw the imported reference.")
+        return True
+
+    if args.image is not None:
+        load_image_reference(args.image)
 
     def start_repair_plan(check_progress: bool = False) -> bool:
         nonlocal repair_start_percent, execution_purpose
@@ -500,7 +566,8 @@ def main() -> None:
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
     cv2.setMouseCallback(WINDOW_NAME, recorder.mouse_callback)
     print(
-        "Window remains open. E = execute, A = toggle persistent auto-repair, "
+        "Window remains open. I = import image, E = execute, "
+        "A = toggle persistent auto-repair, "
         "R/C = reset both, Q/Esc = quit."
     )
 
@@ -527,6 +594,13 @@ def main() -> None:
                 repair_start_percent = None
                 last_handled_disturbance = recorder.disturbance_version
                 print("Reference and simulated robot-output canvases reset.")
+            elif key == ord("i"):
+                if executor.executing:
+                    print("Wait for execution to finish or reset before importing.")
+                else:
+                    selected = choose_image_file()
+                    if selected:
+                        load_image_reference(selected, viewer)
             elif key == ord("e"):
                 strokes = recorder.as_arrays()
                 if executor.executing:

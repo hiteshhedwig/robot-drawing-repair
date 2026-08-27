@@ -47,6 +47,13 @@ of 2D points.
 Keeping the ordered trajectory is important. A pixel-only image says where ink
 exists, but not the order or direction in which the marker should traverse it.
 
+References may also be imported from binary line art with `I` or `--image`.
+The importer thresholds and fits the image, applies connectivity-preserving
+thinning, and converts each connected centerline component into a continuous
+depth-first covering walk. This supplies the ordered trajectory required by IK
+and later repair. Branches may be retraced so a connected component does not
+cause repeated marker-up cycles.
+
 ### Current canvas
 
 `current_canvas` is reconstructed from the exact simulated marker-tip path.

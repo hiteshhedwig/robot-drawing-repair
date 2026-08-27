@@ -55,6 +55,24 @@ class StrokeRecorder:
         self.disturbance_version += 1
         self._version += 1
 
+    def set_reference_strokes(
+        self, strokes: list[list[tuple[int, int]]]
+    ) -> None:
+        """Replace the reference with ordered strokes imported from line art."""
+        self.clear()
+        self.strokes = strokes
+        for stroke in strokes:
+            if len(stroke) >= 2:
+                cv2.polylines(
+                    self.image,
+                    [np.asarray(stroke, dtype=np.int32)],
+                    False,
+                    (25, 25, 25),
+                    3,
+                    cv2.LINE_AA,
+                )
+        self._version += 1
+
     def draw_robot_segment(self, start: tuple[int, int], end: tuple[int, int]) -> None:
         """Update the simulated robot-output canvas from marker motion."""
         cv2.line(self.current_image, start, end, (25, 25, 25), 3, cv2.LINE_AA)
@@ -143,7 +161,7 @@ class StrokeRecorder:
         )
         cv2.putText(
             display,
-            f"{status}   E: execute   A: auto ON/OFF   R/C: reset   Q: quit",
+            f"{status}   E: execute   I: import   A: auto ON/OFF   R/C: reset   Q: quit",
             (12, IMAGE_HEIGHT - 16),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
