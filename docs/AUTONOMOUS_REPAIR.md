@@ -21,9 +21,8 @@ plan the shortest-first correction
 repair and observe again
 ```
 
-The current implementation uses a fixed simulated RGB camera as its autonomous
-observation channel. Marker-tip projection remains only as a privileged oracle
-for debugging. See `CAMERA_PERCEPTION.md` for the strict boundary and pipeline.
+This stable demo branch reconstructs robot output from the simulated marker-tip
+path. It intentionally predates the experimental RGB-camera perception work.
 
 ## Main components
 
@@ -31,7 +30,6 @@ for debugging. See `CAMERA_PERCEPTION.md` for the strict boundary and pipeline.
 |---|---|
 | `drawing_input.py` | Holds the desired and current canvases, handles drawing and erasing, and renders status overlays. |
 | `error_detection.py` | Compares desired and current drawings and produces the missing percentage and Boolean error map. |
-| `perception.py` | Renders fixed-camera RGB, rectifies the canvas, and segments visible ink. |
 | `manual.py` | Maps pixels to the robot workspace, builds drawing and repair paths, controls execution, and handles live replanning. |
 | `kinematics.py` | Solves marker-tip position and orientation targets using damped least-squares inverse kinematics. |
 | `scene.py` | Builds the Panda, marker, physical canvas, table, lighting, and MuJoCo model. |
@@ -51,11 +49,9 @@ exists, but not the order or direction in which the marker should traverse it.
 
 ### Current canvas
 
-`current_canvas` is reconstructed from a fixed RGB camera frame using calibrated
-perspective rectification and classical dark-ink segmentation. Commanded motion,
-marker-tip history, and oracle ink pixels do not update it. Dragging on the
-current panel removes simulated physical ink; the canvas changes only after the
-camera observes that consequence.
+`current_canvas` is reconstructed from the exact simulated marker-tip path.
+Dragging on the current panel removes matching simulated ink segments and
+updates this canvas immediately.
 
 ## Coordinate mapping
 
@@ -72,10 +68,8 @@ robot_y = center_y + half_y × (1 - 2u)
 The mapping is intentionally inverted in places so that the visual direction of
 the robot drawing matches the OpenCV input from the inspection camera angle.
 
-The inverse mapping converts marker positions into pixels only for the
-debug-only oracle, simulated eraser geometry, and route-start selection. It does
-not update the camera-derived current canvas. Camera-to-canvas registration uses
-the independently calibrated homography described in `CAMERA_PERCEPTION.md`.
+The inverse mapping converts marker positions back into current-canvas pixels.
+Forward and inverse mappings use the same constants to avoid drift.
 
 ## Missing-region detection
 
@@ -208,25 +202,21 @@ arm can settle. Ink is explicitly anchored at pen-down and explicitly closed at
 pen-up. These details prevent catch-up motion and unsampled endpoint tails from
 appearing as hooks or false damage.
 
-The simulation retains physical ink as world-space segments so it can render the
-scene. Autonomous perception receives only the resulting RGB pixels. A separate
-marker-tip-projected oracle is retained for diagnostic comparison only.
+The simulation retains physical ink as world-space segments and projects exact
+marker motion into the current OpenCV canvas.
 
 ## Live disturbance handling
 
-The eraser increments a disturbance version whenever it requests a change to
-the simulated physical ink. It does not modify the camera-derived current image.
+The eraser increments a disturbance version whenever it removes simulated ink.
 
 If erasing occurs during autonomous repair:
 
 1. Active repair motion is cancelled at the robot's present pose.
 2. The controller waits until the eraser mouse button is released.
-3. The arm retreats to the fixed observation pose.
-4. A new RGB frame is rendered, rectified, and segmented.
-5. The camera-derived current canvas and error map are recomputed.
-6. Missing trajectory runs are extracted again.
-7. The shortest-first ordering is recalculated from the current marker position.
-8. A new yellow preview replaces the obsolete plan and repair resumes.
+3. The current canvas and error map already reflect the erased ink.
+4. Missing trajectory runs are extracted again.
+5. The shortest-first ordering is recalculated from the current marker position.
+6. A new yellow preview replaces the obsolete plan and repair resumes.
 
 This is replanning, not merely appending the new damage to an old trajectory.
 
@@ -246,11 +236,8 @@ instead of claiming success or repeatedly touching the same region.
 ## Current limitations
 
 - Ink is a visualization layer rather than deposited deformable material.
-- Erasing deletes simulated ink geometry through a debug interaction; camera
-  perception is not directly told which pixels were removed.
-- Camera calibration and canvas geometry are exact and fixed.
-- Observation occurs after a retreat pose instead of continuously under robot
-  occlusion.
+- Current drawing state is reconstructed from privileged marker-tip motion; this
+  branch is intended for the stable mechanics/repair demo, not a vision claim.
 - Repair ordering uses a greedy shortest-first heuristic and is not globally
   optimal.
 - The controller has no collision-aware Cartesian planner yet.

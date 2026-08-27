@@ -11,16 +11,13 @@ from robo_corr.drawing_input import (
     ERASER_RADIUS,
     IMAGE_HEIGHT,
     IMAGE_WIDTH,
-    PERCEPTION_WINDOW_NAME,
     WINDOW_NAME,
     StrokeRecorder,
 )
 from robo_corr.kinematics import MarkerIK
-from robo_corr.perception import CameraCanvasObserver
 from robo_corr.scene import (
     CANVAS_CENTER,
     CANVAS_HALF_SIZE,
-    OBSERVATION_QPOS,
     build_model,
     make_home_data,
 )
@@ -304,7 +301,7 @@ class ManualExecutor:
             return False
 
         self.recorder.disturbance_version += 1
-        self.recorder.rebuild_oracle(
+        self.recorder.rebuild_current(
             [
                 (canvas_to_pixel(start), canvas_to_pixel(end))
                 for start, end in self.ink_segments
@@ -404,47 +401,13 @@ def main() -> None:
     model = build_model()
     data = make_home_data(model)
     home_qpos = data.qpos.copy()
-    observation_qpos = home_qpos.copy()
-    observation_qpos[:7] = OBSERVATION_QPOS
-    data.qpos[:] = observation_qpos
-    data.qvel[:] = 0.0
-    data.ctrl[:7] = observation_qpos[:7]
-    data.ctrl[7] = 255.0
-    mujoco.mj_forward(model, data)
     recorder = StrokeRecorder()
     executor = ManualExecutor(model, data, recorder)
-    camera_observer = CameraCanvasObserver(
-        model, data, IMAGE_WIDTH, IMAGE_HEIGHT, DRAWING_HALF_X, DRAWING_HALF_Y
-    )
     autonomous_active = False
     execution_purpose: str | None = None
-    pending_replan = False
-    last_observed_disturbance = recorder.disturbance_version
+    last_handled_disturbance = recorder.disturbance_version
     last_handled_completion = executor.completion_count
     repair_start_percent: float | None = None
-    last_live_preview = 0.0
-
-    def at_observation_pose() -> bool:
-        error = data.qpos[executor.arm_qpos_ids] - observation_qpos[:7]
-        return bool(np.max(np.abs(error)) < 0.03)
-
-    def observe_camera(acknowledge_disturbance: bool = True) -> None:
-        """The only function allowed to update autonomy's current canvas."""
-        nonlocal last_observed_disturbance
-        observation = camera_observer.observe(data, executor.ink_segments)
-        recorder.set_camera_observation(
-            observation.observed_canvas,
-            observation.raw_rgb,
-            observation.rectified_bgr,
-            observation.ink_mask,
-        )
-        if acknowledge_disturbance:
-            last_observed_disturbance = recorder.disturbance_version
-        print(
-            f"Camera missing: {recorder.missing_percent:.1f}% | "
-            f"Oracle missing: {recorder.oracle_missing_percent:.1f}% | "
-            f"Difference: {abs(recorder.missing_percent - recorder.oracle_missing_percent):.1f}%"
-        )
 
     def start_repair_plan(check_progress: bool = False) -> bool:
         nonlocal repair_start_percent, execution_purpose
@@ -458,7 +421,7 @@ def main() -> None:
             executor.status = f"REPAIR STALLED ({missing_percent:.1f}% UNRESOLVED)"
             print(
                 f"Repair stopped with {missing_percent:.1f}% unresolved: the last "
-                "camera observation showed no measurable improvement."
+                "simulated output showed no measurable improvement."
             )
             return False
 
@@ -469,7 +432,7 @@ def main() -> None:
         if not repair_strokes:
             recorder.repair_preview.clear()
             executor.status = "REPAIR COMPLETE"
-            print("Camera observation contains no missing reference regions.")
+            print("No missing reference regions remain.")
             repair_start_percent = None
             return False
 
@@ -477,32 +440,30 @@ def main() -> None:
         executor.status = "PLANNING CAMERA-BASED REPAIR"
         print(
             f"Planning {len(repair_strokes)} shortest-first repair segment(s) "
-            f"for {recorder.missing_percent:.1f}% camera-observed missing ink..."
+            f"for {recorder.missing_percent:.1f}% missing ink..."
         )
         try:
             repair_path = plan_joint_path(
                 model,
                 data.qpos.copy(),
                 repair_strokes,
-                return_qpos=observation_qpos,
+                return_qpos=home_qpos,
                 orientation_qpos=home_qpos,
             )
         except RuntimeError as error:
             executor.status = "REPAIR IK FAILED"
             print(error)
             return False
-        executor.start(repair_path, status="AUTONOMOUS CAMERA REPAIR")
+        executor.start(repair_path, status="AUTONOMOUS REPAIR")
         execution_purpose = "repair"
         repair_start_percent = missing_percent
         print(f"Repair IK succeeded for {len(repair_path)} robot waypoints.")
         return True
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
-    cv2.namedWindow(PERCEPTION_WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.setMouseCallback(WINDOW_NAME, recorder.mouse_callback)
-    observe_camera()
     print(
-        "Windows remain open. E = execute, A = camera-based repair, "
+        "Window remains open. E = execute, A = autonomous repair, "
         "R/C = reset both, Q/Esc = quit."
     )
 
@@ -515,7 +476,6 @@ def main() -> None:
         while viewer.is_running():
             loop_start = time.monotonic()
             cv2.imshow(WINDOW_NAME, recorder.display_image(executor.status))
-            cv2.imshow(PERCEPTION_WINDOW_NAME, recorder.perception_debug_image())
             key = cv2.waitKey(1) & 0xFF
 
             if key in (ord("q"), 27):
@@ -526,15 +486,9 @@ def main() -> None:
                 viewer.user_scn.ngeom = 0
                 autonomous_active = False
                 execution_purpose = None
-                pending_replan = False
                 repair_start_percent = None
-                data.qpos[:] = observation_qpos
-                data.qvel[:] = 0.0
-                data.ctrl[:7] = observation_qpos[:7]
-                data.ctrl[7] = 255.0
-                mujoco.mj_forward(model, data)
-                observe_camera()
-                print("Reference, simulated ink, camera observation, and oracle reset.")
+                last_handled_disturbance = recorder.disturbance_version
+                print("Reference and simulated robot-output canvases reset.")
             elif key == ord("e"):
                 strokes = recorder.as_arrays()
                 if executor.executing:
@@ -551,7 +505,7 @@ def main() -> None:
                             model,
                             data.qpos.copy(),
                             strokes,
-                            return_qpos=observation_qpos,
+                            return_qpos=home_qpos,
                             orientation_qpos=home_qpos,
                         )
                     except RuntimeError as error:
@@ -565,7 +519,6 @@ def main() -> None:
                 if executor.executing:
                     print("Wait for the current manual execution, or press R/C first.")
                 else:
-                    observe_camera()
                     autonomous_active = True
                     last_handled_completion = executor.completion_count
                     autonomous_active = start_repair_plan()
@@ -573,15 +526,9 @@ def main() -> None:
             if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
                 break
 
-            ink_changed = executor.apply_eraser(viewer)
+            executor.apply_eraser(viewer)
 
-            # While safely parked, make physical erasure visible immediately.
-            # Keep the disturbance pending until mouse-up so autonomy replans
-            # once for the completed brush gesture.
-            if ink_changed and not executor.executing and at_observation_pose():
-                observe_camera(acknowledge_disturbance=False)
-
-            if recorder.disturbance_version != last_observed_disturbance:
+            if recorder.disturbance_version != last_handled_disturbance:
                 if (
                     autonomous_active
                     and executor.executing
@@ -589,52 +536,27 @@ def main() -> None:
                 ):
                     executor.cancel_motion()
                     execution_purpose = None
-                    pending_replan = True
-                    executor.status = "DISTURBANCE - WAITING FOR CAMERA"
+                    executor.status = "DISTURBANCE - REPLANNING"
                 if not recorder.erasing and not executor.executing:
-                    if at_observation_pose():
-                        observe_camera()
-                        if autonomous_active:
-                            repair_start_percent = None
-                            autonomous_active = start_repair_plan()
-                            pending_replan = False
-                    else:
-                        executor.start(
-                            [(observation_qpos.copy(), False)],
-                            status="RETREATING FOR CAMERA",
-                        )
-                        execution_purpose = "retreat"
-                        pending_replan = autonomous_active
+                    last_handled_disturbance = recorder.disturbance_version
+                    if autonomous_active:
+                        repair_start_percent = None
+                        autonomous_active = start_repair_plan()
 
             if executor.completion_count != last_handled_completion:
                 last_handled_completion = executor.completion_count
                 completed_purpose = execution_purpose
                 execution_purpose = None
-                observe_camera()
                 if autonomous_active and completed_purpose == "repair":
                     autonomous_active = start_repair_plan(check_progress=True)
-                elif pending_replan and completed_purpose == "retreat":
-                    repair_start_percent = None
-                    autonomous_active = start_repair_plan()
-                    pending_replan = False
 
             executor.step(viewer)
             executor.ensure_ink_visible(viewer)
-
-            # The raw debug panel is a live camera monitor. These potentially
-            # occluded frames never update current_image or error detection.
-            now = time.monotonic()
-            if (executor.executing or recorder.erasing) and now - last_live_preview >= 0.10:
-                recorder.set_live_camera_frame(
-                    camera_observer.render_preview(data, executor.ink_segments)
-                )
-                last_live_preview = now
             viewer.sync()
             delay = model.opt.timestep - (time.monotonic() - loop_start)
             if delay > 0:
                 time.sleep(delay)
 
-    camera_observer.close()
     cv2.destroyAllWindows()
 
 

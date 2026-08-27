@@ -6,9 +6,6 @@ mouse drawing, live missing-region detection, and autonomous repair/replanning.
 
 See [`docs/AUTONOMOUS_REPAIR.md`](docs/AUTONOMOUS_REPAIR.md) for the complete
 technical explanation of detection, repair planning, execution, and replanning.
-See [`docs/CAMERA_PERCEPTION.md`](docs/CAMERA_PERCEPTION.md) for the RGB
-observation boundary, calibration, segmentation, oracle comparison, and known
-shortcuts.
 
 ## Current structure
 
@@ -20,7 +17,6 @@ robo_corr/
 │   ├── drawing_input.py # ordered OpenCV stroke capture
 │   ├── error_detection.py # desired/current comparison and error map
 │   ├── kinematics.py  # marker-tip inverse kinematics
-│   ├── perception.py  # RGB render, homography, and ink segmentation
 │   ├── manual.py      # mouse trajectory planning and execution
 │   └── viewer.py      # mechanical inspection viewer
 └── third_party/
@@ -72,8 +68,8 @@ python -m robo_corr.manual
 The OpenCV window contains two side-by-side canvases:
 
 - **REFERENCE / DESIRED** on the left records the ordered mouse trajectory.
-- **CAMERA OBSERVED CURRENT** on the right is reconstructed from the fixed
-  MuJoCo RGB camera after the arm retreats from the canvas.
+- **CURRENT / ROBOT OUTPUT** on the right is reconstructed from simulated
+  marker motion.
 
 Controls:
 
@@ -82,20 +78,15 @@ Controls:
   ink segments are also removed from the MuJoCo canvas view.
 - Press `A` to autonomously repair all currently detected missing regions.
 - Release and drag again to create a disconnected stroke.
-- Press `R` or `C` to reset both the OpenCV and simulated canvases and return
-  the Panda to its unobstructed observation pose. Reset also cancels an
-  execution currently in progress.
+- Press `R` or `C` to reset both canvases and return the Panda home. Reset also
+  cancels an execution currently in progress.
 - Press `E` to execute the captured strokes.
 - Press `Q` or Escape to cancel.
 
-The OpenCV input, MuJoCo viewer, and perception-debug window remain open. After
-`E`, the Panda executes the strokes, retreats to a fixed observation pose, and
-the RGB pipeline refreshes the right canvas. The debug window exposes raw RGB,
-rectification, segmentation, desired/error views, and the oracle comparison.
-Its raw RGB panel updates live during robot motion; autonomous error detection
-still accepts only the unobstructed post-retreat observation.
+The OpenCV input and MuJoCo viewer remain open while the Panda executes and
+updates the right canvas in real time.
 
-After each camera observation, the current panel reports `MISSING / UNRECOVERED`
+The current panel reports `MISSING / UNRECOVERED`
 as a percentage of desired path samples. Missing desired regions are marked with
 sparse red dots.
 Matching is directional: it permits normal sideways robot tracking offset but
@@ -105,8 +96,7 @@ from the display overlay for use by the repair planner.
 
 ## Autonomous repair
 
-After erasing simulated ink, the camera independently observes the changed
-canvas. Press `A`. The repair planner:
+After erasing simulated ink, press `A`. The repair planner:
 
 1. Extracts missing runs from the original ordered mouse strokes.
 2. Adds a small overlap with intact ink for clean reconnection.

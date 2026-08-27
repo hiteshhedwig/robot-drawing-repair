@@ -9,7 +9,6 @@ from robo_corr.error_detection import detect_missing_regions, dotted_error_overl
 
 
 WINDOW_NAME = "robo_corr manual input"
-PERCEPTION_WINDOW_NAME = "robo_corr camera perception debug"
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 512
 ERASER_RADIUS = 16
@@ -30,23 +29,12 @@ class StrokeRecorder:
             (IMAGE_HEIGHT, IMAGE_WIDTH, 3), 255, dtype=np.uint8
         )
     )
-    oracle_image: np.ndarray = field(
-        default_factory=lambda: np.full(
-            (IMAGE_HEIGHT, IMAGE_WIDTH, 3), 255, dtype=np.uint8
-        )
-    )
-    raw_camera_rgb: np.ndarray | None = None
-    rectified_camera_bgr: np.ndarray | None = None
-    camera_ink_mask: np.ndarray | None = None
     erase_points: list[tuple[int, int]] = field(default_factory=list)
     drawing: bool = False
     erasing: bool = False
     _version: int = 0
-    _oracle_version: int = 0
     _metrics_version: int = -1
-    _metrics_oracle_version: int = -1
     _missing_percent: float = 0.0
-    _oracle_missing_percent: float = 0.0
     _error_map: np.ndarray = field(
         default_factory=lambda: np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH), dtype=bool)
     )
@@ -59,7 +47,6 @@ class StrokeRecorder:
     def clear(self) -> None:
         self.image.fill(255)
         self.current_image.fill(255)
-        self.oracle_image.fill(255)
         self.strokes.clear()
         self.erase_points.clear()
         self.drawing = False
@@ -67,39 +54,20 @@ class StrokeRecorder:
         self.repair_preview.clear()
         self.disturbance_version += 1
         self._version += 1
-        self._oracle_version += 1
 
     def draw_robot_segment(self, start: tuple[int, int], end: tuple[int, int]) -> None:
-        """Update the privileged oracle canvas for diagnostics only."""
-        cv2.line(self.oracle_image, start, end, (25, 25, 25), 3, cv2.LINE_AA)
-        self._oracle_version += 1
-
-    def rebuild_oracle(
-        self, pixel_segments: list[tuple[tuple[int, int], tuple[int, int]]]
-    ) -> None:
-        """Rebuild the debug-only oracle after simulated ink is erased."""
-        self.oracle_image.fill(255)
-        for start, end in pixel_segments:
-            cv2.line(self.oracle_image, start, end, (25, 25, 25), 3, cv2.LINE_AA)
-        self._oracle_version += 1
-
-    def set_camera_observation(
-        self,
-        observed_canvas: np.ndarray,
-        raw_rgb: np.ndarray,
-        rectified_bgr: np.ndarray,
-        ink_mask: np.ndarray,
-    ) -> None:
-        """Replace autonomy's current state using camera-derived pixels only."""
-        self.current_image[:] = observed_canvas
-        self.raw_camera_rgb = raw_rgb.copy()
-        self.rectified_camera_bgr = rectified_bgr.copy()
-        self.camera_ink_mask = ink_mask.copy()
+        """Update the simulated robot-output canvas from marker motion."""
+        cv2.line(self.current_image, start, end, (25, 25, 25), 3, cv2.LINE_AA)
         self._version += 1
 
-    def set_live_camera_frame(self, raw_rgb: np.ndarray) -> None:
-        """Refresh only the debug preview; do not change autonomous state."""
-        self.raw_camera_rgb = raw_rgb.copy()
+    def rebuild_current(
+        self, pixel_segments: list[tuple[tuple[int, int], tuple[int, int]]]
+    ) -> None:
+        """Rebuild the simulated robot-output canvas after erasing."""
+        self.current_image.fill(255)
+        for start, end in pixel_segments:
+            cv2.line(self.current_image, start, end, (25, 25, 25), 3, cv2.LINE_AA)
+        self._version += 1
 
     @property
     def missing_percent(self) -> float:
@@ -107,34 +75,20 @@ class StrokeRecorder:
         return self._missing_percent
 
     @property
-    def oracle_missing_percent(self) -> float:
-        """Return the privileged comparison metric; never use it for control."""
-        self._refresh_error_metrics()
-        return self._oracle_missing_percent
-
-    @property
     def error_map(self) -> np.ndarray:
         self._refresh_error_metrics()
         return self._error_map.copy()
 
     def _refresh_error_metrics(self) -> None:
-        if (
-            self._metrics_version == self._version
-            and self._metrics_oracle_version == self._oracle_version
-        ):
+        if self._metrics_version == self._version:
             return
         result = detect_missing_regions(
             self.image, self.current_image, reference_strokes=self.strokes
         )
-        oracle_result = detect_missing_regions(
-            self.image, self.oracle_image, reference_strokes=self.strokes
-        )
         self._missing_percent = result.missing_percent
         self._error_map = result.error_map
         self._error_overlay = dotted_error_overlay(result.error_map)
-        self._oracle_missing_percent = oracle_result.missing_percent
         self._metrics_version = self._version
-        self._metrics_oracle_version = self._oracle_version
 
     def as_arrays(self) -> list[np.ndarray]:
         """Return non-empty strokes in the format used by the robot planner."""
@@ -179,7 +133,7 @@ class StrokeRecorder:
         )
         cv2.putText(
             display,
-            "CAMERA OBSERVED CURRENT - drag here to erase simulated ink",
+            "CURRENT / ROBOT OUTPUT - drag here to erase",
             (IMAGE_WIDTH + 12, 28),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.50,
@@ -210,9 +164,7 @@ class StrokeRecorder:
         cv2.putText(
             display,
             (
-                f"CAMERA {self._missing_percent:5.1f}%   "
-                f"ORACLE {self._oracle_missing_percent:5.1f}%   "
-                f"DIFF {abs(self._missing_percent - self._oracle_missing_percent):4.1f}%"
+                "SIMULATED ROBOT OUTPUT"
             ),
             (IMAGE_WIDTH + 12, IMAGE_HEIGHT - 42),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -222,39 +174,6 @@ class StrokeRecorder:
             cv2.LINE_AA,
         )
         return display
-
-    def perception_debug_image(self) -> np.ndarray:
-        """Six inspectable views for camera geometry and segmentation debugging."""
-        size = (320, 240)
-
-        def panel(image: np.ndarray, label: str) -> np.ndarray:
-            resized = cv2.resize(image, size, interpolation=cv2.INTER_NEAREST)
-            cv2.putText(
-                resized, label, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                (0, 80, 220), 1, cv2.LINE_AA
-            )
-            return resized
-
-        raw = (
-            cv2.cvtColor(self.raw_camera_rgb, cv2.COLOR_RGB2BGR)
-            if self.raw_camera_rgb is not None
-            else np.full((IMAGE_HEIGHT, IMAGE_WIDTH, 3), 255, np.uint8)
-        )
-        rectified = (
-            self.rectified_camera_bgr
-            if self.rectified_camera_bgr is not None
-            else np.full_like(self.image, 255)
-        )
-        mask = (
-            cv2.cvtColor((self.camera_ink_mask.astype(np.uint8) * 255), cv2.COLOR_GRAY2BGR)
-            if self.camera_ink_mask is not None
-            else np.zeros_like(self.image)
-        )
-        camera_error = self.current_image.copy()
-        camera_error[self._error_overlay] = (0, 0, 255)
-        top = np.hstack((panel(raw, "RAW RGB"), panel(rectified, "RECTIFIED"), panel(mask, "INK MASK")))
-        bottom = np.hstack((panel(self.image, "DESIRED"), panel(camera_error, "CAMERA ERROR"), panel(self.oracle_image, "ORACLE DEBUG")))
-        return np.vstack((top, bottom))
 
     def mouse_callback(self, event: int, x: int, y: int, _flags: int, _data: object) -> None:
         on_reference = x < IMAGE_WIDTH

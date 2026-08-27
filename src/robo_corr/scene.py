@@ -17,8 +17,6 @@ PANDA_XML = (
 # MuJoCo box sizes are half-extents: this is a 50 x 40 cm drawing area.
 CANVAS_CENTER = (0.55, 0.0, 0.405)
 CANVAS_HALF_SIZE = (0.25, 0.20, 0.005)
-CANVAS_CAMERA_NAME = "canvas_rgb_camera"
-OBSERVATION_QPOS = (1.2, -0.5, 0.0, -2.0, 0.0, 1.5, 0.785)
 
 
 def build_model() -> mujoco.MjModel:
@@ -110,15 +108,6 @@ def build_model() -> mujoco.MjModel:
         type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
         diffuse=[0.85, 0.85, 0.85],
     )
-    # Fixed overhead camera. Its calibrated projection is rectified in
-    # perception.py; it never moves in response to the drawing.
-    world.add_camera(
-        name=CANVAS_CAMERA_NAME,
-        pos=[CANVAS_CENTER[0], CANVAS_CENTER[1], 1.35],
-        quat=[1.0, 0.0, 0.0, 0.0],
-        fovy=42.0,
-    )
-
     return spec.compile()
 
 
